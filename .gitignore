@@ -1,0 +1,18 @@
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+UserSettings/
+
+# Visual Studio
+.vs/
+*.csproj
+*.sln
+*.unityproj
+*.booproj
+
+# OS
+.DS_Store
+Thumbs.db
