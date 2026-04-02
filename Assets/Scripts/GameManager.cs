@@ -27,12 +27,16 @@ public class GameManager : MonoBehaviour
     // ═══════════════════════════════════════════════════════════
 
     [Header("UI")]
-    // Text hiện trạng thái: "Game Over!", "You Win!" v.v.
+    // Text hiện trạng thái khi thua
     public TMP_Text statusText;
+    // Text hiện trạng thái khi thắng (tuỳ chọn, nếu dùng chung thì bỏ trống)
+    public TMP_Text winStatusText;
 
     [Header("Menu Panels")]
-    // Panel chứa nút Restart và dòng chữ Game Over khi hết game
+    // Panel chứa nút chuyển màn / hiện khi thua
     public GameObject gameOverPanel;
+    // Panel chứa nền và text riêng khi thắng
+    public GameObject winGamePanel;
 
     // ═══════════════════════════════════════════════════════════
     //  PRIVATE STATE
@@ -83,8 +87,9 @@ public class GameManager : MonoBehaviour
         // Hiển thị điểm ban đầu (= 0) lên UI ngay khi game bắt đầu
         UpdateScoreUI();
 
-        // Đảm bảo ẩn màn hình GameOver
+        // Đảm bảo ẩn màn hình GameOver và WinGame lúc mới vào
         if (gameOverPanel != null) gameOverPanel.SetActive(false);
+        if (winGamePanel != null) winGamePanel.SetActive(false);
 
         // Bắt buộc nhịp tg phải = 1 để cho Cinemachine Camera hoạt động mượt
         Time.timeScale = 1f;
@@ -186,15 +191,22 @@ public class GameManager : MonoBehaviour
         // Dừng spawn item mới (hàm rỗng hiện tại — có thể mở rộng sau)
         ItemManager.Instance?.StopSpawning();
 
-        // Kích hoạt panel Game Over khi thua/thắng
-        if (gameOverPanel != null)
-            gameOverPanel.SetActive(true);
-
-        // Hiện thông báo Game Over kèm điểm cuối
-        if (statusText != null)
+        // Phân nhánh logic Thắng / Thua
+        if (isWin)
         {
-            if (isWin) statusText.text = "YOU WIN! \nScore: " + score;
-            else statusText.text = "GAME OVER! DEADLINE WINS YOU";
+            // Bật Panel Thắng Game
+            if (winGamePanel != null) winGamePanel.SetActive(true);
+            
+            // Cập nhật điểm lên Text (Ưu tiên WinText riêng, nếu ko có thì lấy Text chung)
+            if (winStatusText != null) winStatusText.text = "YOU WIN!\nCONGRATULATIONSYOU WIN DEADLINE\nScore: " + score;
+            else if (statusText != null) statusText.text = "YOU WIN!\nCONGRATULATIONSYOU WIN DEADLINE\nScore: " + score;
+        }
+        else
+        {
+            // Bật Panel Thua Game
+            if (gameOverPanel != null) gameOverPanel.SetActive(true);
+            
+            if (statusText != null) statusText.text = "GAME OVER! DEADLINE WINS YOU";
         }
 
         // Tự động dừng mọi thứ khi Game Over

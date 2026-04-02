@@ -26,8 +26,6 @@ public class ItemManager : MonoBehaviour
     public ItemSpawnData obstacleData;
 
     [Header("Path Settings")]
-    public Transform pathStart;
-    public Transform pathEnd;
     public float spawnSpacing = 5f;
     public float itemY = 2.5f;
     public float codeCommitItemY = 5f;
@@ -181,17 +179,18 @@ public class ItemManager : MonoBehaviour
             float targetDist = row * spawnSpacing;
             PathSample sample = GetSampleAtDistance(samples, targetDist);
 
-            // ← Chỉ lấy X và Z từ spline, Y giữ nguyên như code cũ
             float splineX = sample.position.x;
+            float splineY = sample.position.y;
             float splineZ = sample.position.z;
 
             if (skinUpRows.Contains(row))
             {
                 int mid = lanes.Length / 2;
-                // ← Dùng lanes[mid] offset theo sample.right như cũ nhưng chỉ lấy vị trí
                 Vector3 laneOffset = sample.right * lanes[mid];
-                Vector3 pos = new Vector3(splineX + laneOffset.x, itemY, splineZ + laneOffset.z);
-                GameObject obj = skinUpPool.Get(pos, skinUpData.prefab.transform.rotation);
+                // Cộng thêm splineY để vật phẩm cũng leo lượn theo dốc
+                Vector3 pos = new Vector3(splineX + laneOffset.x, splineY + itemY, splineZ + laneOffset.z);
+                Quaternion curveRot = Quaternion.LookRotation(sample.forward, sample.up);
+                GameObject obj = skinUpPool.Get(pos, curveRot * skinUpData.prefab.transform.rotation);
                 activeItems.Add(obj);
                 total++;
             }
@@ -206,10 +205,11 @@ public class ItemManager : MonoBehaviour
                     bool isCC = prefab == codeCommitData?.prefab;
                     float yOffset = isCC ? codeCommitItemY : itemY;
 
-                    // ← Offset lane theo right vector của đường cong
                     Vector3 laneOffset = sample.right * lanes[laneIndex];
-                    Vector3 pos = new Vector3(splineX + laneOffset.x, yOffset, splineZ + laneOffset.z);
-                    GameObject obj = pool.Get(pos, prefab.transform.rotation);
+                    // Cộng thêm splineY vào yOffset mọc trên mặt đường
+                    Vector3 pos = new Vector3(splineX + laneOffset.x, splineY + yOffset, splineZ + laneOffset.z);
+                    Quaternion curveRot = Quaternion.LookRotation(sample.forward, sample.up);
+                    GameObject obj = pool.Get(pos, curveRot * prefab.transform.rotation);
                     activeItems.Add(obj);
                     total++;
                 }
@@ -235,7 +235,8 @@ public class ItemManager : MonoBehaviour
                 PathSample result = new PathSample();
                 result.position = Vector3.Lerp(samples[i - 1].position, samples[i].position, t);
                 result.forward = Vector3.Slerp(samples[i - 1].forward, samples[i].forward, t).normalized;
-                result.up = Vector3.up;
+                // Rất quan trọng: Tính thêm trục ngả người nghiêng theo sườn dốc mà PathBaker đã bắn Raycast!
+                result.up = Vector3.Slerp(samples[i - 1].up, samples[i].up, t).normalized;
                 return result;
             }
 

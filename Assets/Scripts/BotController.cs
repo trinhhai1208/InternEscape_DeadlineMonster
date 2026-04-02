@@ -72,8 +72,6 @@ public class BotController : MonoBehaviour
         // Nếu Animator chưa được kéo vào Inspector → tự tìm trong children của Bot
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
-
-        // Cảnh báo nếu không tìm thấy Animator — Bot sẽ không animate
         // Cảnh báo nếu không tìm thấy Animator — Bot sẽ không animate
         if (animator == null)
             Debug.LogWarning("[BotController] Không tìm thấy Animator! Hãy gán CharacterAnimator.controller cho child model của Bot.");

@@ -9,7 +9,7 @@ public class MainMenuManager : MonoBehaviour
 {
     // Cài đặt tên Scene chính xác xác của game (vd: "PlayerSence_Test")
     [Header("Game Scene Name")]
-    public string gameSceneName = "PlayerSence";
+    public string gameSceneName = "TestPlay";
 
     /// <summary>
     /// Gắn hàm này vào sự kiện OnClick() của nút PLAY / START

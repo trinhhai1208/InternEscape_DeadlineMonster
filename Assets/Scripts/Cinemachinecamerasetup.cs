@@ -83,7 +83,7 @@ public class CinemachineCameraSetup : MonoBehaviour
 
         // ✅ FIX GIẬT: Force snap camera về đúng vị trí ngay frame đầu
         // Không dùng StartCoroutine vì cần chạy TRƯỚC khi render
-        // StartCoroutine(SnapCameraOnStart());
+        StartCoroutine(SnapCameraOnStart());
     }
     private IEnumerator SnapCameraOnStart()
     {
@@ -124,7 +124,7 @@ public class CinemachineCameraSetup : MonoBehaviour
             follow3rd.CameraDistance = 18;                         // ← khoảng cách ra sau
             follow3rd.VerticalArmLength = 1.5f;
             Debug.Log($"[CinemachineCameraSetup] 3rd Person Follow OK → distance: {follow3rd.CameraDistance}");
-            // return; // Bỏ return để phần Snap camera phía dưới được chạy
+            return;
         }
         _vcam.PreviousStateIsValid = false;
 
@@ -190,9 +190,7 @@ public class CinemachineCameraSetup : MonoBehaviour
 
         while (elapsed < duration)
         {
-            // Capping delta time to 0.05 (20fps min) so a huge lag spike during restart doesn't skip the whole animation
-            float dt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
-            elapsed += dt;
+            elapsed += Time.unscaledDeltaTime;
 
             if (_bossCam == null) break;
 

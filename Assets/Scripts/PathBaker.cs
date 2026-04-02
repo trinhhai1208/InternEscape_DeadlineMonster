@@ -8,24 +8,72 @@ public class PathBaker : MonoBehaviour
     [Tooltip("Khoảng cách (mét) giữa các mốc tọa độ sinh ra. Nhỏ = mượt nhưng data nặng (Khuyên dùng: 0.5 - 1.0)")]
     public float resolution = 0.5f;
 
+    [Tooltip("Tự động dính sát đường chạy xuống mặt phẳng Mesh thực tế (Khắc phục lỗi xiên dốc)")]
+    public bool snapToGround = true;
+
+    [Tooltip("Khoảng cách tia Laser dò đường từ trên trời chiếu xuống")]
+    public float raycastHeight = 10f;
+
     [Tooltip("Vẽ trước đường tham chiếu trong cửa sổ Scene")]
     public bool drawGizmos = true;
 
     private List<Vector3> rawNodes = new List<Vector3>();
 
-    // Dòng này tạo một nút bấm tự động khi bạn Chuột Phải vào tên Script này trong Editor
+    // Hàm thông minh tự quét TẤT CẢ các điểm mốc (kể cả điểm neo ẩn bên trong rẽ cua)
+    private List<Vector3> GetPathNodes()
+    {
+        List<Vector3> nodes = new List<Vector3>();
+        foreach (Transform child in transform)
+        {
+            Transform anchorStart = child.Find("Anchor_Start");
+            Transform anchorExit = child.Find("Anchor_Exit");
+            bool hasAnyAnchor = false;
+
+            // 1. Lấy lối vào
+            if (anchorStart != null) 
+            {
+                if (nodes.Count == 0 || Vector3.Distance(nodes[nodes.Count - 1], anchorStart.position) > 0.05f)
+                    nodes.Add(anchorStart.position);
+                hasAnyAnchor = true;
+            }
+
+            // 2. Lấy xương sống đường cong (Nếu user thêm Anchor_Mid để giúp uốn lượn)
+            for (int i = 0; i < child.childCount; i++)
+            {
+                Transform gc = child.GetChild(i);
+                if (gc.name.Contains("Anchor_Mid"))
+                {
+                    if (nodes.Count == 0 || Vector3.Distance(nodes[nodes.Count - 1], gc.position) > 0.05f)
+                        nodes.Add(gc.position);
+                }
+            }
+
+            // 3. Lấy lối ra
+            if (anchorExit != null) 
+            {
+                if (nodes.Count == 0 || Vector3.Distance(nodes[nodes.Count - 1], anchorExit.position) > 0.05f)
+                    nodes.Add(anchorExit.position);
+                hasAnyAnchor = true;
+            }
+
+            // 4. Mặc định cho Model nào không xài Anchor Tool
+            if (!hasAnyAnchor)
+            {
+                if (nodes.Count == 0 || Vector3.Distance(nodes[nodes.Count - 1], child.position) > 0.05f)
+                    nodes.Add(child.position);
+            }
+        }
+        return nodes;
+    }
+
     [ContextMenu("Bake Path To GenMap")]
     public void BakePath()
     {
         GenMap genMap = GetComponent<GenMap>();
         if (genMap == null) return;
 
-        // 1. Quét tất cả các Object con làm Node mốc
-        rawNodes.Clear();
-        foreach (Transform child in transform)
-        {
-            rawNodes.Add(child.position);
-        }
+        // 1. Quét tất cả Node mốc bằng bộ quét phân giải kĩ bên trên
+        rawNodes = GetPathNodes();
 
         if (rawNodes.Count < 2)
         {
@@ -61,12 +109,23 @@ public class PathBaker : MonoBehaviour
                 // Toán học: Tính Toạ độ tịnh tiến và Hướng tại phần trăm 't'
                 Vector3 pos = CalculateCatmullRom(t, p0, p1, p2, p3);
                 Vector3 dir = CalculateCatmullRomTangent(t, p0, p1, p2, p3).normalized;
+                Vector3 upVec = Vector3.up;
+
+                // TỰ ĐỘNG BÁM ĐẤT (Snapping): Phóng tia Laser từ trên trời xuống để đo độ xiên của dốc
+                if (snapToGround)
+                {
+                    if (Physics.Raycast(pos + Vector3.up * raycastHeight, Vector3.down, out RaycastHit hit, raycastHeight * 2f))
+                    {
+                        pos = hit.point; // Đặt chuẩn xác 100% bằng cao độ mặt phẳng
+                        upVec = hit.normal; // Lấy pháp tuyến mặt phẳng để ngả người theo độ nghiêng con dốc!
+                    }
+                }
 
                 // Lưu PathSample
                 PathSample sample = new PathSample();
                 sample.position = pos;
                 sample.forward = dir;
-                sample.up = Vector3.up;
+                sample.up = upVec;
                 sample.size = 1f;
 
                 // Tính quãng đường tích lũy
@@ -81,10 +140,19 @@ public class PathBaker : MonoBehaviour
         
         // 4. Móc điểm dứt điểm nằm chính xác ở mốc cuối cùng (đề phòng vòng lặp For hụt)
         PathSample lastSample = new PathSample();
-        lastSample.position = rawNodes[rawNodes.Count - 1];
-        lastSample.up = Vector3.up;
+        Vector3 lastPos = rawNodes[rawNodes.Count - 1];
+        Vector3 lastUp = Vector3.up;
+        
+        if (snapToGround && Physics.Raycast(lastPos + Vector3.up * raycastHeight, Vector3.down, out RaycastHit hitLast, raycastHeight * 2f))
+        {
+            lastPos = hitLast.point;
+            lastUp = hitLast.normal;
+        }
+
+        lastSample.position = lastPos;
+        lastSample.up = lastUp;
         Vector3 lastDir = rawNodes[rawNodes.Count - 1] - rawNodes[rawNodes.Count - 2];
-        lastDir.y = 0;
+        // Không ép hướng Y về 0 nữa để hỗ trợ leo dốc tốt hơn
         lastSample.forward = lastDir.normalized;
         genMap.splineSample.Add(lastSample);
 
@@ -103,10 +171,10 @@ public class PathBaker : MonoBehaviour
     // ─── Vẽ trước đường trong Editor (Không hiện trong Game thực) ───
     private void OnDrawGizmos()
     {
-        // 1. Vẽ các Node do bạn tự thả bằng hạt ngọc màu Lục
+        // 1. Vẽ hạt ngọc Lục bảo để hiển thị các mốc xương sống chuẩn xác mà Tool quét được
         Gizmos.color = Color.green;
-        foreach (Transform child in transform) {
-            Gizmos.DrawWireSphere(child.position, 0.5f);
+        foreach (Vector3 node in GetPathNodes()) {
+            Gizmos.DrawWireSphere(node, 0.5f);
         }
 
         if (!drawGizmos) return;

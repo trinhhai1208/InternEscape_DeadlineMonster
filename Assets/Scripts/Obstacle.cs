@@ -28,6 +28,15 @@ public class Obstacle : MonoBehaviour
 
     // ─── Unity Lifecycle ─────────────────────────────────────────
 
+    // Cờ chống chạm 2 lần trong cùng 1 frame (giống Coffee và CodeCommit)
+    private bool _hit = false;
+
+    // Chạy khi GameObject lấy ra từ Object Pool để dùng lại
+    private void OnEnable()
+    {
+        _hit = false;
+    }
+
     // Chạy khi GameObject kích hoạt — đảm bảo collider là trigger
     private void Start()
     {
@@ -39,8 +48,13 @@ public class Obstacle : MonoBehaviour
     // Unity gọi khi một Collider khác đi vào vùng trigger của obstacle
     private void OnTriggerEnter(Collider other)
     {
+        // Bỏ qua nếu đã chạm rồi
+        if (_hit) return;
+
         // Bỏ qua nếu không phải Player (Bot không bị slow khi chạm obstacle)
         if (!other.CompareTag("Player")) return;
+
+        _hit = true;
 
         // Lấy PlayerController từ Player để gọi hàm giảm tốc
         PlayerController pc = other.GetComponent<PlayerController>();
@@ -61,6 +75,8 @@ public class Obstacle : MonoBehaviour
             // Xóa particle sau 1 giây (hardcode — ngắn hơn của item vì chỉ là va chạm)
             Destroy(fx, 1f);
         }
-        // Obstacle KHÔNG bị xóa hay trả về pool — nó vẫn ở đó sau khi Player chạm qua
+        
+        // ── CẬP NHẬT MỚI: Trả về Object Pool để Error biến mất ────────────────
+        ItemManager.Instance?.ReturnToPool(gameObject);
     }
 }

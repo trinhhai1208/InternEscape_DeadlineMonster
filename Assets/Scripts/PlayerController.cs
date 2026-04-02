@@ -29,7 +29,7 @@ public class PlayerController : MonoBehaviour
 
     [Header("Mobile Input")]
     // Ngưỡng vuốt (pixel) tối thiểu để nhận diện là 1 lần vuốt. (Chỉnh trong Inspector)
-    public float swipeThreshold = 50f;
+    public float swipeThreshold = 30f;
 
     // ═══════════════════════════════════════════════════════════
     //  PRIVATE FIELDS — Chỉ dùng nội bộ, không hiện trong Inspector
