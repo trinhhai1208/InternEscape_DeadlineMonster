@@ -28,7 +28,7 @@
 - `Assets/Editor`: PathGeneratorTool (Công cụ xây dựng đường chạy trực quan).
 
 ### ⚙️ Công Nghệ Sử Dụng
-- **Game Engine**: Unity 2021.x+
+- **Game Engine**: Unity 2022.3.35f1
 - **Ngôn ngữ**: C#
 - **Hệ thống Camera**: Cinemachine (Camera Intro Cinematic).
 - **UI**: TextMeshPro & Unity UI Canvas.
@@ -58,4 +58,8 @@
 
 ## 📝 Giấy Phép (License)
 Dự án được phát triển cho mục đích học tập và giải trí.
+Nếu bạn có góp ý vui lòng liên hệ: 
+ - [Facebook] https://www.facebook.com/trinh.hai.12082004
+ - [Email] [trinhhai758@gmail.com]
+ - [Phone] 0342915766
 © 2026 **Trịnh Ngọc Hải**
