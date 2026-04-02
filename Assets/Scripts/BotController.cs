@@ -17,10 +17,10 @@ public class BotController : MonoBehaviour
 
     // Tốc độ ban đầu của Bot khi game bắt đầu (units/giây).
     // Nên thấp hơn Player.speed một chút để Player có lợi thế ban đầu.
-    public float baseSpeed = 9f;
+    public float baseSpeed = 10f;
 
     // Lượng tốc độ tăng thêm mỗi giây (acceleration). Bot càng lúc càng nhanh.
-    public float speedIncreaseRate = 0.8f;
+    public float speedIncreaseRate = 0.15f;
 
     // Giới hạn tốc độ tối đa của Bot. Đảm bảo Bot không vượt quá ngưỡng này.
     public float maxSpeed = 15f;
@@ -31,10 +31,14 @@ public class BotController : MonoBehaviour
     // Hiện chưa được dùng trong code nhưng có thể dùng cho AI snapping.
     public Transform player;
 
-    [Header("Animation")]
+    [Header("Animation & Audio")]
 
     // Animator của model Bot. Gán trực tiếp trong Inspector hoặc để trống (tự tìm trong children).
     public Animator animator;
+
+    // Chiếc loa phụ tản nhiệt tiếng động kinh hoàng khi Boss đến gần
+    public AudioSource bossFootstepSource;
+    public AudioClip bossFootstepClip;
 
     // ─── Biến nội bộ ────────────────────────────────────────────
 
@@ -76,6 +80,15 @@ public class BotController : MonoBehaviour
         if (animator == null)
             Debug.LogWarning("[BotController] Không tìm thấy Animator! Hãy gán CharacterAnimator.controller cho child model của Bot.");
             
+        // Setup Băng Loa Kinh Hoàng
+        if (bossFootstepSource != null && bossFootstepClip != null)
+        {
+            bossFootstepSource.clip = bossFootstepClip;
+            bossFootstepSource.loop = true;
+            bossFootstepSource.volume = 0f; // Khởi đầu câm lặng vì đứng xa
+            bossFootstepSource.Play();
+        }
+
         // Bắt đầu AI Đổi Lane Ngẫu Nhiên
         StartCoroutine(RandomLaneSwitching());
     }
@@ -111,9 +124,32 @@ public class BotController : MonoBehaviour
         if (animator != null)
         {
             if (GameManager.Instance != null && !GameManager.Instance.isGamePlaying)
+            {
                 animator.SetFloat("Speed", 0);
+                if (bossFootstepSource != null && bossFootstepSource.isPlaying) bossFootstepSource.Pause();
+            }
             else
+            {
                 animator.SetFloat("Speed", currentSpeed);
+                if (bossFootstepSource != null && !bossFootstepSource.isPlaying) bossFootstepSource.UnPause();
+            }
+        }
+
+        // --- HỆ THỐNG ÂM THANH ÁP SÁT TRUY SÁT ---
+        if (bossFootstepSource != null && player != null && GameManager.Instance != null && GameManager.Instance.isGamePlaying)
+        {
+            float dist = Vector3.Distance(transform.position, player.position);
+            
+            // Công thức hù doạ: Sát < 15 mét mới nổ tiếng chân dồn dập. 
+            // Ở cự ly 15 mét = Volume 0%, Cự ly 0 mét = Volume 100%.
+            if (dist < 15f)
+            {
+                bossFootstepSource.volume = 1f - (dist / 15f);
+            }
+            else
+            {
+                bossFootstepSource.volume = 0f;
+            }
         }
     }
 

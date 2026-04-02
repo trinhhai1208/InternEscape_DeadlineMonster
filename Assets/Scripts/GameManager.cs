@@ -94,6 +94,12 @@ public class GameManager : MonoBehaviour
         // Bắt buộc nhịp tg phải = 1 để cho Cinemachine Camera hoạt động mượt
         Time.timeScale = 1f;
 
+        // Khởi động Âm nhạc Hành động (Gameplay BGM)
+        if (AudioManager.Instance != null)
+        {
+            AudioManager.Instance.PlayInGameMusic();
+        }
+
         // Bắt đầu chạy Nháy góc quay 2s Intro Căng Thẳng
         StartCoroutine(IntroSequence());
     }
@@ -139,6 +145,9 @@ public class GameManager : MonoBehaviour
     // Gọi từ CodeCommit khi Player nhặt item — cộng điểm
     public void AddScore(int amount)
     {
+        // Hí hửng nhặt thêm điểm CodeCommit
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayItemCodeCommit();
+
         // += : cộng dồn vào điểm hiện tại
         score += amount;
 
@@ -191,9 +200,15 @@ public class GameManager : MonoBehaviour
         // Dừng spawn item mới (hàm rỗng hiện tại — có thể mở rộng sau)
         ItemManager.Instance?.StopSpawning();
 
+        // Rút cầu dao điện đài BGM Gameplay
+        if (AudioManager.Instance != null) AudioManager.Instance.StopMusic();
+
         // Phân nhánh logic Thắng / Thua
         if (isWin)
         {
+            // Oà khóc vì thắng game
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayWin();
+
             // Bật Panel Thắng Game
             if (winGamePanel != null) winGamePanel.SetActive(true);
             
@@ -203,6 +218,9 @@ public class GameManager : MonoBehaviour
         }
         else
         {
+            // Đau khổ vì Deadline xé xác
+            if (AudioManager.Instance != null) AudioManager.Instance.PlayLose();
+
             // Bật Panel Thua Game
             if (gameOverPanel != null) gameOverPanel.SetActive(true);
             
@@ -215,7 +233,6 @@ public class GameManager : MonoBehaviour
         Debug.Log("[GameManager] GAME OVER - Score: " + score);
     }
 
-    // Gắn hàm này vào sự kiện OnClick của nút [Restart]
     public void RestartGame()
     {
         Time.timeScale = 1f;
@@ -235,5 +252,31 @@ public class GameManager : MonoBehaviour
         yield return null; // 1 frame để Destroy() flush xong
 
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    /// <summary>
+    /// Gắn hàm này vào sự kiện OnClick của nút [Home] hoặc [Back to Menu] 
+    /// </summary>
+    public void GoToMainMenu(string menuSceneName)
+    {
+        Time.timeScale = 1f;
+
+        // Cũng dọn dẹp Camera rác trước khi thoát để tránh lỗi Cinemachine
+        if (cameraSetup != null)
+        {
+            cameraSetup.CleanupBeforeRestart();
+        }
+
+        // 🎇 Bật công tắc tĩnh bảo MainMenuManager nhảy thẳng qua chọn Map
+        MainMenuManager.jumpToMapSelection = true;
+
+        StartCoroutine(ReturnToMenuAfterCleanup(menuSceneName));
+    }
+
+    private IEnumerator ReturnToMenuAfterCleanup(string menuSceneName)
+    {
+        yield return null;
+        SceneManager.LoadScene(menuSceneName);
+        Debug.Log("Quay trở về Sảnh chính: " + menuSceneName);
     }
 }

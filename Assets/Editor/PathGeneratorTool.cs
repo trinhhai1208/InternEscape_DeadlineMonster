@@ -8,6 +8,7 @@ public class PathGeneratorTool : EditorWindow
     // Cài đặt công cụ
     public List<GameObject> pathModules = new List<GameObject>();
     public Transform pathRoot;
+    public Transform endPointObject;
 
     // Trạng thái theo dõi
     private GameObject lastModule;
@@ -33,7 +34,7 @@ public class PathGeneratorTool : EditorWindow
 
     private void OnGUI()
     {
-        GUILayout.Label("🏁 Lắp Ráp Đường Đua Vô Tận", EditorStyles.boldLabel);
+        GUILayout.Label("   Lắp Ráp Đường Đua Vô Tận", EditorStyles.boldLabel);
         EditorGUILayout.Space();
 
         // 1. Phân khu Setup
@@ -45,7 +46,7 @@ public class PathGeneratorTool : EditorWindow
         so.ApplyModifiedProperties();
 
         EditorGUILayout.Space();
-        if (GUILayout.Button("🛠️ Tẩy Tuỷ Các Module Cua Nhập (Tự động gắn Anchor)"))
+        if (GUILayout.Button("Tẩy Tuỷ Các Module Cua Nhập (Tự động gắn Anchor)"))
         {
             AutoInjectAnchorsToPrefabs();
         }
@@ -54,9 +55,12 @@ public class PathGeneratorTool : EditorWindow
         
         // Cài đặt Gốc
         pathRoot = (Transform)EditorGUILayout.ObjectField("Thư mục chứa đường (Khuyên dùng: Map/GenMap)", pathRoot, typeof(Transform), true);
+        
+        // Điểm Cán Đích (Tự chạy nhảy về đuôi map)
+        endPointObject = (Transform)EditorGUILayout.ObjectField("Vật thể Cán Đích (End Point)", endPointObject, typeof(Transform), true);
 
         // Nút Khởi Tạo Lại
-        if (GUILayout.Button("🔄 Xóa Sạch Bản Đồ Đang Nối & Bắt Đầu Lại Từ (0,0,0)"))
+        if (GUILayout.Button("Xóa Sạch Bản Đồ Đang Nối & Bắt Đầu Lại Từ (0,0,0)"))
         {
             ClearAllAndStartFresh();
         }
@@ -80,7 +84,7 @@ public class PathGeneratorTool : EditorWindow
         EditorGUILayout.Space();
 
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("🎲 Nối Đường Ngẫu Nhiên"))
+        if (GUILayout.Button("Nối Đường Ngẫu Nhiên"))
         {
             if (pathModules.Count > 0)
             {
@@ -92,7 +96,7 @@ public class PathGeneratorTool : EditorWindow
             }
         }
 
-        if (GUILayout.Button("🔗 Nối Mảnh Đang Xem Trước"))
+        if (GUILayout.Button(" Nối Mảnh Đang Xem Trước"))
         {
             if (pathModules.Count > 0 && selectedPreviewIndex < pathModules.Count)
             {
@@ -110,13 +114,13 @@ public class PathGeneratorTool : EditorWindow
         GUILayout.Label("3. Hỗ Trợ Đắc Lực", EditorStyles.label);
         
         EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("↩️ Hoàn Tác (Undo) Mảnh Vừa Lắp", GUILayout.Height(30)))
+        if (GUILayout.Button("↩Hoàn Tác (Undo) Mảnh Vừa Lắp", GUILayout.Height(30)))
         {
             UndoLastModule();
         }
 
         GUI.backgroundColor = Color.cyan;
-        if (GUILayout.Button("🔥 Nướng Dữ Liệu Chạy (Bake Path)", GUILayout.Height(30)))
+        if (GUILayout.Button("Nướng Dữ Liệu Chạy (Bake Path)", GUILayout.Height(30)))
         {
             AutoBakePath();
         }
@@ -407,8 +411,19 @@ public class PathGeneratorTool : EditorWindow
         // Chạy Bake Data từ các Module
         baker.BakePath();
         
+        // Tự động kéo điểm Đích chốt chặn chặn ở Map cuối cùng
+        if (endPointObject != null && genMap.splineSample != null && genMap.splineSample.Count > 0)
+        {
+            Undo.RecordObject(endPointObject, "Move End Point");
+            var lastSample = genMap.splineSample[genMap.splineSample.Count - 1];
+            endPointObject.position = lastSample.position;
+            // Xoay khung thành vuông góc với trục đường và đứng thẳng bám dốc
+            endPointObject.rotation = Quaternion.LookRotation(lastSample.forward, lastSample.up);
+            Debug.Log($"Đã tự động kéo cụm Đích (End Point) dời về km cuối cùng tại toạ độ {lastSample.position}!");
+        }
+
         // Cập nhật lên Editor báo hiệu file vừa thay đổi (để khi bấm Save, mảng Map được lưu trọn)
         EditorUtility.SetDirty(genMap);
-        Debug.Log("🎉 Đã Auto Bake hệ thống nốt đường thành công!!!");
+        Debug.Log(" Đã Auto Bake hệ thống nốt đường thành công!!!");
     }
 }

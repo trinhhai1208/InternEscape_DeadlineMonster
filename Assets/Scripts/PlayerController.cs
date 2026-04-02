@@ -11,7 +11,7 @@ public class PlayerController : MonoBehaviour
     [Header("Movement")] // Tạo tiêu đề nhóm trong Inspector
 
     // Tốc độ chạy cơ bản (units/giây). public để SkinUpItem.cs có thể tăng trực tiếp.
-    public float speed = 10f;
+    public float speed = 13f;
 
     // Tốc độ trượt ngang khi đổi lane (Lerp factor). Cao = đổi lane nhanh/gấp.
     public float laneSwitchSpeed = 15f;
@@ -27,9 +27,15 @@ public class PlayerController : MonoBehaviour
     // Chỉ 1 skin active tại 1 thời điểm.
     public GameObject[] skinModels;
 
+    [Header("Audio (Tiếng Bước Chân)")]
+    // Kéo thả loa phụ vào đây (Gắn Component AudioSource lên người Player)
+    public AudioSource sfxSource;
+    public AudioClip runningStepClip;
+    public AudioClip walkingStepClip;
+
     [Header("Mobile Input")]
-    // Ngưỡng vuốt (pixel) tối thiểu để nhận diện là 1 lần vuốt. (Chỉnh trong Inspector)
-    public float swipeThreshold = 30f;
+    // Ngưỡng vuốt (pixel) tối thiểu để nhận diện là 1 lần vuốt. (Nâng lên 50 để tránh quá nhạy)
+    public float swipeThreshold = 50f;
 
     // ═══════════════════════════════════════════════════════════
     //  PRIVATE FIELDS — Chỉ dùng nội bộ, không hiện trong Inspector
@@ -61,6 +67,8 @@ public class PlayerController : MonoBehaviour
     // Biến phụ trợ cho Mobile Swipe
     private Vector2 startTouchPosition;
     private bool isSwiping = false;
+    private float lastSwipeTime = 0f;
+    private float swipeCooldown = 0.25f; // Tăng lên 0.25s để người chơi kịp định hình vị trí.
 
     // Cho phép các script khác (vd: SkinUpItem) xem đang ở skin số mấy
     public int SkinIndex => currentSkinIndex;
@@ -90,6 +98,14 @@ public class PlayerController : MonoBehaviour
 
         // Lấy Animator từ model skin đang active để drive animation.
         RefreshAnimator();
+
+        // Nạp đĩa nhạc Tiếng Chạy Mặc Định ngay lúc đầu
+        if (sfxSource != null && runningStepClip != null)
+        {
+            sfxSource.clip = runningStepClip;
+            sfxSource.loop = true;  // Lặp vĩnh viễn lúc đang chạy
+            sfxSource.Play();
+        }
     }
 
     // Update() chạy mỗi frame — dùng cho input (cần responsive ngay lập tức)
@@ -130,11 +146,16 @@ public class PlayerController : MonoBehaviour
                     // Chỉ nhận diện lướt khi: quá ngưỡng pixel VÀ lướt ngang nhiều hơn lướt dọc (để tránh vuốt nhầm khi vuốt lên/xuống)
                     if (Mathf.Abs(xDistance) > swipeThreshold && Mathf.Abs(xDistance) > Mathf.Abs(yDistance))
                     {
-                        if (xDistance < 0) MoveLeft();   // Vuốt trái
-                        else               MoveRight();  // Vuốt phải
+                        // Bổ sung Bộ Hãm Phanh (Cooldown 0.2s): Tránh ngón tay miết quá nhanh (60 pixel) ăn trọn 2 mốc quẹt ngay lập tức.
+                        if (Time.time - lastSwipeTime > swipeCooldown)
+                        {
+                            if (xDistance < 0) MoveLeft();   // Vuốt trái
+                            else               MoveRight();  // Vuốt phải
 
-                        // Reset cờ để không bị lướt liên tục quá nhiều lane trong 1 lần vuốt
-                        isSwiping = false;
+                            // Vẫn giữ cơ chế vuốt liên hoàn không cần nhấc tay, nhưng hãm tốc độ nhận diện.
+                            startTouchPosition = touch.position;
+                            lastSwipeTime = Time.time;
+                        }
                     }
                 }
             }
@@ -148,6 +169,20 @@ public class PlayerController : MonoBehaviour
                 animator.SetFloat("Speed", 0);
             else
                 animator.SetFloat("Speed", speed * speedMultiplier);
+        }
+
+        // --- AUDIO ---
+        // Giữ chân tiếng động lại nếu Camera vẫn đang quay diễn cảnh (Intro) hoặc Game bị Stop Time!
+        if (sfxSource != null)
+        {
+            if ((GameManager.Instance != null && !GameManager.Instance.isGamePlaying) || Time.timeScale == 0)
+            {
+                if (sfxSource.isPlaying) sfxSource.Pause();
+            }
+            else
+            {
+                if (!sfxSource.isPlaying) sfxSource.UnPause();
+            }
         }
     }
 
@@ -233,6 +268,8 @@ public class PlayerController : MonoBehaviour
     // endgameSpeedMultiplier: hệ số lưu vào GameManager (1f = không lưu thêm speed)
     public void UpgradeSkin(float endgameSpeedMultiplier)
     {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayItemSkinUp();
+
         // Tăng index skin, nhưng không vượt quá số skin có.
         // Mathf.Min: lấy giá trị nhỏ hơn giữa 2 số — đảm bảo không out of bounds.
         currentSkinIndex = Mathf.Min(currentSkinIndex + 1, skinModels.Length - 1);
@@ -283,6 +320,8 @@ public class PlayerController : MonoBehaviour
     // Gọi từ CoffeeItem — tăng tốc tạm thời trong 'duration' giây
     public void ApplySpeedBoost(float multiplier, float duration)
     {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayItemCoffee();
+
         // Nếu đang boost rồi (nhặt thêm cà phê) → dừng coroutine cũ trước
         if (activeBoostCoroutine != null)
             StopCoroutine(activeBoostCoroutine);
@@ -299,6 +338,8 @@ public class PlayerController : MonoBehaviour
     // Default parameters: nếu gọi không truyền tham số, dùng giá trị mặc định này
     public void ApplyObstacleSlow(float slowMultiplier = 0.5f, float duration = 2f)
     {
+        if (AudioManager.Instance != null && !isSlowed) AudioManager.Instance.PlayItemBug();
+
         // Nếu đang bị slow rồi → bỏ qua, không apply thêm (chồng slow)
         if (isSlowed) return;
 
@@ -356,6 +397,13 @@ public class PlayerController : MonoBehaviour
         if (animator != null)
             animator.SetBool("IsSlowed", true);
 
+        // Chuyển Đĩa Mài Giảm Tốc (Đi Nhón Chân / Walk)
+        if (sfxSource != null && walkingStepClip != null)
+        {
+            sfxSource.clip = walkingStepClip;
+            sfxSource.Play();
+        }
+
         // Chờ hết thời gian slow
         yield return new WaitForSeconds(duration);
 
@@ -368,5 +416,12 @@ public class PlayerController : MonoBehaviour
         // Báo Animator chuyển lại Run (IsSlowed = false → Walk → Run)
         if (animator != null)
             animator.SetBool("IsSlowed", false);
+
+        // Thay lại Đĩa Nhạc Bay Khẩn Cấp (Running)
+        if (sfxSource != null && runningStepClip != null)
+        {
+            sfxSource.clip = runningStepClip;
+            sfxSource.Play();
+        }
     }
 }

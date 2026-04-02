@@ -27,8 +27,7 @@ public class ItemManager : MonoBehaviour
 
     [Header("Path Settings")]
     public float spawnSpacing = 5f;
-    public float itemY = 2.5f;
-    public float codeCommitItemY = 5f;
+    public float itemY = 2.5f; // Dùng chung 1 chiều cao chuẩn cho toàn bộ Item
 
     [Header("Lane Settings")]
     public float[] lanes = { -5f, 0f, 5f };
@@ -196,18 +195,31 @@ public class ItemManager : MonoBehaviour
             }
             else
             {
+                int bugCountInRow = 0; // Bộ đếm số chướng ngại vật trong 1 hàng ngang
+
                 for (int laneIndex = 0; laneIndex < lanes.Length; laneIndex++)
                 {
                     GameObject prefab = PickNormalItemPrefab();
+
+                    // --- CHỐNG LỖI BÍT ĐƯỜNG MÀN CHƠI (WALL OF BUG) ---
+                    if (prefab != null && obstacleData != null && prefab == obstacleData.prefab)
+                    {
+                        bugCountInRow++;
+                        // Nếu Máy chủ tính đặt con Bug thứ 3 bít kín đường hẻm
+                        if (bugCountInRow >= lanes.Length)
+                        {
+                            // Áp chế, ép nó đẻ ra CodeCommit (hoặc Coffee) làm lối thoát cho Player
+                            prefab = (Random.value > 0.1f && codeCommitData?.prefab != null) ? codeCommitData.prefab : coffeeData?.prefab;
+                        }
+                    }
+
                     if (prefab == null) continue;
                     ObjectPool pool = GetPool(prefab);
                     if (pool == null) continue;
-                    bool isCC = prefab == codeCommitData?.prefab;
-                    float yOffset = isCC ? codeCommitItemY : itemY;
 
                     Vector3 laneOffset = sample.right * lanes[laneIndex];
-                    // Cộng thêm splineY vào yOffset mọc trên mặt đường
-                    Vector3 pos = new Vector3(splineX + laneOffset.x, splineY + yOffset, splineZ + laneOffset.z);
+                    // Cộng thêm splineY vào itemY để các vật phẩm đều mọc chuẩn 1 độ cao trên mặt phẳng nghiêng
+                    Vector3 pos = new Vector3(splineX + laneOffset.x, splineY + itemY, splineZ + laneOffset.z);
                     Quaternion curveRot = Quaternion.LookRotation(sample.forward, sample.up);
                     GameObject obj = pool.Get(pos, curveRot * prefab.transform.rotation);
                     activeItems.Add(obj);
