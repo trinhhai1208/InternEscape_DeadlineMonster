@@ -1,423 +1,341 @@
-using System.Collections;       // Cần cho IEnumerator (Coroutine)
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Điều khiển nhân vật chính: xử lý di chuyển 3 làn, vuốt trên Mobile, 
+/// thay đổi Skin và các hiệu ứng tăng/giảm tốc độ.
+/// </summary>
 public class PlayerController : MonoBehaviour
 {
     // ═══════════════════════════════════════════════════════════
-    //  FIELDS — Các biến có thể chỉnh trong Inspector
+    //  FIELDS — Inspector
     // ═══════════════════════════════════════════════════════════
 
-    [Header("Movement")] // Tạo tiêu đề nhóm trong Inspector
+    [Header("Movement")]
+    [Tooltip("Tốc độ chạy cơ bản (units/giây)")]
+    public float speed = 15f;
 
-    // Tốc độ chạy cơ bản (units/giây). public để SkinUpItem.cs có thể tăng trực tiếp.
-    public float speed = 13f;
-
-    // Tốc độ trượt ngang khi đổi lane (Lerp factor). Cao = đổi lane nhanh/gấp.
+    [Tooltip("Tốc độ trượt ngang khi đổi lane")]
     public float laneSwitchSpeed = 15f;
 
-    // Vị trí X (world) của 3 lane: trái (-5), giữa (0), phải (5).
-    // Mảng để dễ mở rộng nếu cần thêm lane.
+    [Tooltip("Vị trí X của 3 làn đường")]
     public float[] lanes = { -5f, 0, 5f };
 
     [Header("Skin Models")]
-
-    // Mảng các GameObject skin (model 3D) — mỗi phần tử là 1 skin khác nhau.
-    // Index 0 = Intern, 1 = Fresher, 2 = Junior, 3 = Senior.
-    // Chỉ 1 skin active tại 1 thời điểm.
+    [Tooltip("Danh sách các model tiến hóa của nhân vật")]
     public GameObject[] skinModels;
 
     [Header("Audio (Tiếng Bước Chân)")]
-    // Kéo thả loa phụ vào đây (Gắn Component AudioSource lên người Player)
     public AudioSource sfxSource;
     public AudioClip runningStepClip;
     public AudioClip walkingStepClip;
 
     [Header("Mobile Input")]
-    // Ngưỡng vuốt (pixel) tối thiểu để nhận diện là 1 lần vuốt. (Nâng lên 50 để tránh quá nhạy)
+    [Tooltip("Ngưỡng vuốt tối thiểu để nhận diện (pixel)")]
     public float swipeThreshold = 50f;
 
     // ═══════════════════════════════════════════════════════════
-    //  PRIVATE FIELDS — Chỉ dùng nội bộ, không hiện trong Inspector
+    //  PRIVATE FIELDS
     // ═══════════════════════════════════════════════════════════
 
-    // Lane hiện tại đang đứng (index trong mảng lanes[]). Bắt đầu ở giữa (index 1).
-    private int currentLane = 1;
+    private int _currentLane = 1;
+    private Rigidbody _rb;
+    private Animator _animator;
+    private float _speedMultiplier = 1f;
+    private bool _isSlowed = false;
+    private Coroutine _activeBoostCoroutine;
+    private int _currentSkinIndex = 0;
+    private Vector2 _startTouchPosition;
+    private bool _isSwiping = false;
+    private float _lastSwipeTime = 0f;
+    private float _swipeCooldown = 0.25f;
+    private int _currentPathIndex = 0;
 
-    // Rigidbody để điều khiển vật lý của Player (MovePosition thay vì transform.position).
-    private Rigidbody rb;
-
-    // Animator của skin hiện tại — cần cập nhật sau mỗi lần đổi skin.
-    private Animator animator;
-
-    // Hệ số nhân tốc độ tạm thời (Coffee boost hoặc Obstacle slow).
-    // Nhân vào speed khi tính vận tốc thực: vận tốc = speed * speedMultiplier.
-    // = 1f khi bình thường, > 1f khi boost, < 1f khi slow.
-    private float speedMultiplier = 1f;
-
-    // Cờ kiểm tra đang bị slow không — để không apply slow 2 lần cùng lúc.
-    private bool isSlowed = false;
-
-    // Lưu Coroutine đang chạy của Coffee boost để có thể dừng nếu nhặt thêm cà phê.
-    private Coroutine activeBoostCoroutine;
-
-    // Index skin hiện tại trong mảng skinModels[]. Bắt đầu từ 0 (Intern).
-    private int currentSkinIndex = 0;
-
-    // Biến phụ trợ cho Mobile Swipe
-    private Vector2 startTouchPosition;
-    private bool isSwiping = false;
-    private float lastSwipeTime = 0f;
-    private float swipeCooldown = 0.25f; // Tăng lên 0.25s để người chơi kịp định hình vị trí.
-
-    // Cho phép các script khác (vd: SkinUpItem) xem đang ở skin số mấy
-    public int SkinIndex => currentSkinIndex;
-
-    // ----- SPLINE DATA -----
-    // Index hiện tại của Player trên đường GenMap
-    private int currentPathIndex = 0;
-
+    /// <summary>
+    /// Index skin hiện tại đang sử dụng.
+    /// </summary>
+    public int SkinIndex => _currentSkinIndex;
 
     // ═══════════════════════════════════════════════════════════
     //  UNITY LIFECYCLE
     // ═══════════════════════════════════════════════════════════
 
-    // Start() chạy 1 lần khi scene bắt đầu hoặc khi GameObject được tạo
-    void Start()
+    private void Start()
     {
-        // GetComponent<T>(): tìm component type T trên cùng GameObject.
-        // Cần Rigidbody để dùng MovePosition và MoveRotation.
-        rb = GetComponent<Rigidbody>();
+        _rb = GetComponent<Rigidbody>();
+        _rb.constraints = RigidbodyConstraints.FreezeRotation;
 
-        // Khóa tất cả trục xoay để Player không bị lật/ngã khi di chuyển.
-        // FreezeRotation = khóa cả X, Y, Z rotation.
-        rb.constraints = RigidbodyConstraints.FreezeRotation;
-
-        // Hiện skin mặc định (index 0 = Intern), ẩn tất cả skin còn lại.
-        ShowSkin(currentSkinIndex);
-
-        // Lấy Animator từ model skin đang active để drive animation.
+        ShowSkin(_currentSkinIndex);
         RefreshAnimator();
 
-        // Nạp đĩa nhạc Tiếng Chạy Mặc Định ngay lúc đầu
         if (sfxSource != null && runningStepClip != null)
         {
             sfxSource.clip = runningStepClip;
-            sfxSource.loop = true;  // Lặp vĩnh viễn lúc đang chạy
+            sfxSource.loop = true;
             sfxSource.Play();
         }
     }
 
-    // Update() chạy mỗi frame — dùng cho input (cần responsive ngay lập tức)
-    void Update()
+    private void Update()
     {
-        // ─── PC INPUT (Keyboard) ─────────────────────────────────────────
+        HandleKeyboardInput();
+        HandleMobileInput();
+        UpdateAnimations();
+        UpdateAudioState();
+    }
 
-        // GetKeyDown: true chỉ ĐÚNG 1 frame khi phím được nhấn xuống (không lặp khi giữ).
+    private void FixedUpdate()
+    {
+        if (GameManager.Instance != null && !GameManager.Instance.isGamePlaying) return;
+        if (GenMap.Instance == null || GenMap.Instance.splineSample == null || GenMap.Instance.splineSample.Count == 0) return;
+
+        ApplyMovement();
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  INPUT HANDLING
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Xử lý điều khiển từ bàn phím (AD / Mũi tên).
+    /// </summary>
+    private void HandleKeyboardInput()
+    {
         if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A))
             MoveLeft();
 
         if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D))
             MoveRight();
+    }
 
-        // ─── MOBILE INPUT (Touch Swipe) ──────────────────────────────────
-
-        // Kiểm tra xem có ngón tay nào đang chạm màn hình không
+    /// <summary>
+    /// Xử lý điều khiển vuốt chạm trên Mobile.
+    /// </summary>
+    private void HandleMobileInput()
+    {
         if (Input.touchCount > 0)
         {
-            // Lấy ngón tay đầu tiên chạm vào (index 0)
             Touch touch = Input.GetTouch(0);
 
-            // Bắt đầu chạm
             if (touch.phase == TouchPhase.Began)
             {
-                startTouchPosition = touch.position;
-                isSwiping = true;
+                _startTouchPosition = touch.position;
+                _isSwiping = true;
             }
-            // Đang lướt hoặc vừa thả tay ra
             else if (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Ended)
             {
-                if (isSwiping)
+                if (_isSwiping)
                 {
                     Vector2 endTouchPosition = touch.position;
-                    float xDistance = endTouchPosition.x - startTouchPosition.x;
-                    float yDistance = endTouchPosition.y - startTouchPosition.y;
+                    float xDistance = endTouchPosition.x - _startTouchPosition.x;
+                    float yDistance = endTouchPosition.y - _startTouchPosition.y;
 
-                    // Chỉ nhận diện lướt khi: quá ngưỡng pixel VÀ lướt ngang nhiều hơn lướt dọc (để tránh vuốt nhầm khi vuốt lên/xuống)
                     if (Mathf.Abs(xDistance) > swipeThreshold && Mathf.Abs(xDistance) > Mathf.Abs(yDistance))
                     {
-                        // Bổ sung Bộ Hãm Phanh (Cooldown 0.2s): Tránh ngón tay miết quá nhanh (60 pixel) ăn trọn 2 mốc quẹt ngay lập tức.
-                        if (Time.time - lastSwipeTime > swipeCooldown)
+                        if (Time.time - _lastSwipeTime > _swipeCooldown)
                         {
-                            if (xDistance < 0) MoveLeft();   // Vuốt trái
-                            else               MoveRight();  // Vuốt phải
+                            if (xDistance < 0) MoveLeft();
+                            else MoveRight();
 
-                            // Vẫn giữ cơ chế vuốt liên hoàn không cần nhấc tay, nhưng hãm tốc độ nhận diện.
-                            startTouchPosition = touch.position;
-                            lastSwipeTime = Time.time;
+                            _startTouchPosition = touch.position;
+                            _lastSwipeTime = Time.time;
                         }
                     }
                 }
             }
         }
-
-        // Cập nhật parameter "Speed" trên Animator để blend animation.
-        // Chỉ chạy hoạt ảnh nếu Game đang thực sự Play
-        if (animator != null)
-        {
-            if (GameManager.Instance != null && !GameManager.Instance.isGamePlaying)
-                animator.SetFloat("Speed", 0);
-            else
-                animator.SetFloat("Speed", speed * speedMultiplier);
-        }
-
-        // --- AUDIO ---
-        // Giữ chân tiếng động lại nếu Camera vẫn đang quay diễn cảnh (Intro) hoặc Game bị Stop Time!
-        if (sfxSource != null)
-        {
-            if ((GameManager.Instance != null && !GameManager.Instance.isGamePlaying) || Time.timeScale == 0)
-            {
-                if (sfxSource.isPlaying) sfxSource.Pause();
-            }
-            else
-            {
-                if (!sfxSource.isPlaying) sfxSource.UnPause();
-            }
-        }
     }
 
-    // Hàm phụ trợ đổi lane
-    private void MoveLeft()
+    // ═══════════════════════════════════════════════════════════
+    //  MOVEMENT LOGIC
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Tính toán và áp dụng di chuyển vật lý dọc theo Spline.
+    /// </summary>
+    private void ApplyMovement()
     {
-        // Chỉ giảm nếu chưa ở lane trái nhất
-        if (currentLane > 0) currentLane--;
-    }
+        float moveDelta = speed * _speedMultiplier * Time.fixedDeltaTime;
 
-    private void MoveRight()
-    {
-        // Chỉ tăng nếu chưa ở lane phải nhất
-        if (currentLane < lanes.Length - 1) currentLane++;
-    }
-
-    // FixedUpdate() chạy mỗi physics frame (mặc định 50 lần/giây, cố định).
-    void FixedUpdate()
-    {
-        // Nếu Game chưa nhấn nút Start, hoặc đang load Cắt Cảnh Camera -> Đứng yên
-        if (GameManager.Instance != null && !GameManager.Instance.isGamePlaying)
-            return;
-
-        // Bắt buộc phải có đường GenMap để chạy
-        if (GenMap.Instance == null || GenMap.Instance.splineSample == null || GenMap.Instance.splineSample.Count == 0)
-            return;
-
-        float moveDelta = speed * speedMultiplier * Time.fixedDeltaTime;
-
-        // 1. Tịnh tiến mốc Điểm Nhìn (Path Index) theo tốc độ lướt
-        while (currentPathIndex < GenMap.Instance.splineSample.Count - 1)
+        // 1. Tận dụng mốc Path Index
+        while (_currentPathIndex < GenMap.Instance.splineSample.Count - 1)
         {
-            Vector3 nextPos = GenMap.Instance.splineSample[currentPathIndex + 1].position;
-            
-            // Tính khoảng cách từ ta đến điểm tiếp theo (bỏ qua độ cao)
+            Vector3 nextPos = GenMap.Instance.splineSample[_currentPathIndex + 1].position;
             Vector3 flatNext = new Vector3(nextPos.x, 0, nextPos.z);
-            Vector3 flatPlayer = new Vector3(rb.position.x, 0, rb.position.z);
+            Vector3 flatPlayer = new Vector3(_rb.position.x, 0, _rb.position.z);
             
-            // Vượt mép Điểm thì nâng Index lên
-            if (Vector3.Dot(flatNext - flatPlayer, GenMap.Instance.splineSample[currentPathIndex].forward) <= 0 || 
+            if (Vector3.Dot(flatNext - flatPlayer, GenMap.Instance.splineSample[_currentPathIndex].forward) <= 0 || 
                 Vector3.Distance(flatPlayer, flatNext) < moveDelta)
             {
-                currentPathIndex++;
+                _currentPathIndex++;
             }
             else break;
         }
 
-        // Neo chặn index cuối cùng khỏi lỗi tràn mảng
-        if (currentPathIndex >= GenMap.Instance.splineSample.Count) 
-            currentPathIndex = GenMap.Instance.splineSample.Count - 1;
+        if (_currentPathIndex >= GenMap.Instance.splineSample.Count) 
+            _currentPathIndex = GenMap.Instance.splineSample.Count - 1;
 
-        PathSample sample = GenMap.Instance.splineSample[currentPathIndex];
+        PathSample sample = GenMap.Instance.splineSample[_currentPathIndex];
 
-        // 2. Di chuyển tịnh tiến tới trước tự do thoải mái
-        Vector3 baseNewPos = rb.position + sample.forward * moveDelta;
+        // 2. Tịnh tiến tới trước
+        Vector3 baseNewPos = _rb.position + sample.forward * moveDelta;
 
-        // 3. Tính độ lệch Làn: Kéo dần nhân vật về phía trục X (Local Vector Mép đường)
+        // 3. Đổi làn mượt mà
         Vector3 offsetFromCenter = baseNewPos - sample.position;
-        // Chiếu lên trục vuông góc của đường để biết Player đang dạt ra ngoài bao xa
         float currentLateral = Vector3.Dot(offsetFromCenter, sample.right);
-        float targetLateral = lanes[currentLane];
-        // Kéo dần mượt mà vào giữa lane mục tiêu
+        float targetLateral = lanes[_currentLane];
         float nextLateral = Mathf.Lerp(currentLateral, targetLateral, laneSwitchSpeed * Time.fixedDeltaTime);
         
-        // Vị trí chốt: Bằng Điểm Tới Trước + Độ lệch hông Trái Phải
         Vector3 finalPos = baseNewPos + sample.right * (nextLateral - currentLateral);
-        // Đảm bảo chạy lượn lên dốc / xuống dốc thì bám dính lấy sàn
-        finalPos.y = Mathf.Lerp(rb.position.y, sample.position.y, 10f * Time.fixedDeltaTime);
+        finalPos.y = Mathf.Lerp(_rb.position.y, sample.position.y, 10f * Time.fixedDeltaTime);
 
-        // Update Physics
-        rb.MovePosition(finalPos);
+        _rb.MovePosition(finalPos);
 
-        // 4. Xoay mặt siêu mượt bám Khúc Cua
+        // 4. Xoay theo địa hình
         Quaternion targetRotation = Quaternion.LookRotation(sample.forward, sample.up);
-        rb.MoveRotation(Quaternion.Lerp(rb.rotation, targetRotation, 10f * Time.fixedDeltaTime));
+        _rb.MoveRotation(Quaternion.Lerp(_rb.rotation, targetRotation, 10f * Time.fixedDeltaTime));
+    }
+
+    private void MoveLeft()
+    {
+        if (_currentLane > 0) _currentLane--;
+    }
+
+    private void MoveRight()
+    {
+        if (_currentLane < lanes.Length - 1) _currentLane++;
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  SKIN SWAP
+    //  SKIN & ANIMATION
     // ═══════════════════════════════════════════════════════════
 
-    // Hàm public để SkinUpItem gọi khi Player nhặt SkinUp
-    // endgameSpeedMultiplier: hệ số lưu vào GameManager (1f = không lưu thêm speed)
+    /// <summary>
+    /// Cập nhật trang thái hoạt ảnh dựa trên tốc độ và hiệu ứng.
+    /// </summary>
+    private void UpdateAnimations()
+    {
+        if (_animator == null) return;
+
+        if (GameManager.Instance != null && !GameManager.Instance.isGamePlaying)
+            _animator.SetFloat(Constants.ANIM_SPEED, 0);
+        else
+            _animator.SetFloat(Constants.ANIM_SPEED, speed * _speedMultiplier);
+    }
+
+    /// <summary>
+    /// Nâng cấp skin nhân vật khi thu thập Item.
+    /// </summary>
     public void UpgradeSkin(float endgameSpeedMultiplier)
     {
         if (AudioManager.Instance != null) AudioManager.Instance.PlayItemSkinUp();
 
-        // Tăng index skin, nhưng không vượt quá số skin có.
-        // Mathf.Min: lấy giá trị nhỏ hơn giữa 2 số — đảm bảo không out of bounds.
-        currentSkinIndex = Mathf.Min(currentSkinIndex + 1, skinModels.Length - 1);
-
-        // Ẩn skin cũ, hiện skin mới theo index vừa cập nhật
-        ShowSkin(currentSkinIndex);
-
-        // Lấy Animator từ skin mới (mỗi model có thể có Animator riêng)
+        _currentSkinIndex = Mathf.Min(_currentSkinIndex + 1, skinModels.Length - 1);
+        ShowSkin(_currentSkinIndex);
         RefreshAnimator();
 
-        // Thông báo cho GameManager biết SkinUp đã được dùng (lưu level và multiplier)
-        GameManager.Instance.OnSkinUpCollected(currentSkinIndex, endgameSpeedMultiplier);
-
-        Debug.Log("[Player] Skin swapped to: " + currentSkinIndex);
+        GameManager.Instance.OnSkinUpCollected(_currentSkinIndex, endgameSpeedMultiplier);
     }
 
-    // Ẩn tất cả model, chỉ hiện model tại index chỉ định
     private void ShowSkin(int index)
     {
-        // Kiểm tra null và rỗng trước khi dùng
         if (skinModels == null || skinModels.Length == 0) return;
-
-        // Duyệt qua tất cả skin model
         for (int i = 0; i < skinModels.Length; i++)
             if (skinModels[i] != null)
-                // SetActive(i == index): chỉ true khi i đúng bằng index cần hiện
                 skinModels[i].SetActive(i == index);
     }
 
-    // Sau khi đổi skin, lấy Animator từ model đang active (mỗi skin có Animator riêng)
     private void RefreshAnimator()
     {
-        if (skinModels == null || currentSkinIndex >= skinModels.Length) return;
-
-        // Lấy model đang active
-        GameObject activeModel = skinModels[currentSkinIndex];
-
+        if (skinModels == null || _currentSkinIndex >= skinModels.Length) return;
+        GameObject activeModel = skinModels[_currentSkinIndex];
         if (activeModel != null)
-            // GetComponentInChildren: tìm Animator trong children của model này.
-            // Dùng InChildren vì Animator thường gắn trên mesh child, không phải root.
-            animator = activeModel.GetComponentInChildren<Animator>();
+            _animator = activeModel.GetComponentInChildren<Animator>();
     }
 
     // ═══════════════════════════════════════════════════════════
-    //  SPEED BOOST (Coffee)
+    //  EFFECTS & AUDIO
     // ═══════════════════════════════════════════════════════════
 
-    // Gọi từ CoffeeItem — tăng tốc tạm thời trong 'duration' giây
-    public void ApplySpeedBoost(float multiplier, float duration)
+    private void UpdateAudioState()
     {
-        if (AudioManager.Instance != null) AudioManager.Instance.PlayItemCoffee();
+        if (sfxSource == null) return;
 
-        // Nếu đang boost rồi (nhặt thêm cà phê) → dừng coroutine cũ trước
-        if (activeBoostCoroutine != null)
-            StopCoroutine(activeBoostCoroutine);
-
-        // Bắt đầu coroutine mới và lưu reference để có thể Stop nếu cần
-        activeBoostCoroutine = StartCoroutine(BoostCoroutine(multiplier, duration));
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    //  OBSTACLE SLOW
-    // ═══════════════════════════════════════════════════════════
-
-    // Gọi từ Obstacle — giảm tốc trong 'duration' giây
-    // Default parameters: nếu gọi không truyền tham số, dùng giá trị mặc định này
-    public void ApplyObstacleSlow(float slowMultiplier = 0.5f, float duration = 2f)
-    {
-        if (AudioManager.Instance != null && !isSlowed) AudioManager.Instance.PlayItemBug();
-
-        // Nếu đang bị slow rồi → bỏ qua, không apply thêm (chồng slow)
-        if (isSlowed) return;
-
-        // StartCoroutine: bắt đầu chạy hàm bất đồng bộ (có yield return)
-        StartCoroutine(SlowCoroutine(slowMultiplier, duration));
-    }
-
-    // ═══════════════════════════════════════════════════════════
-    //  ENDGAME SPEED BONUS
-    // ═══════════════════════════════════════════════════════════
-
-    // Gọi khi game kết thúc thắng — cộng thêm speed từ các SkinUp đã nhặt
-    public void ApplyEndgameSpeedBonus()
-    {
-        // Lấy hệ số nhân speed từ GameManager (tổng hợp từ tất cả SkinUp)
-        float mult = GameManager.Instance.GetEndgameSpeedMultiplier();
-
-        if (mult > 1f) // Chỉ áp dụng nếu có tăng tốc (> bình thường)
+        bool shouldPause = (GameManager.Instance != null && !GameManager.Instance.isGamePlaying) || Time.timeScale == 0;
+        
+        if (shouldPause)
         {
-            speed *= mult; // Nhân tốc độ thực tế
-            Debug.Log("[Player] Endgame speed: " + speed);
+            if (sfxSource.isPlaying) sfxSource.Pause();
+        }
+        else
+        {
+            if (!sfxSource.isPlaying) sfxSource.UnPause();
         }
     }
 
-    // ═══════════════════════════════════════════════════════════
-    //  COROUTINES — Hàm bất đồng bộ (chạy song song với gameplay)
-    // ═══════════════════════════════════════════════════════════
+    /// <summary>
+    /// Kích hoạt hiệu ứng tăng tốc từ cà phê.
+    /// </summary>
+    public void ApplySpeedBoost(float multiplier, float duration)
+    {
+        if (AudioManager.Instance != null) AudioManager.Instance.PlayItemCoffee();
+        if (_activeBoostCoroutine != null) StopCoroutine(_activeBoostCoroutine);
+        _activeBoostCoroutine = StartCoroutine(BoostCoroutine(multiplier, duration));
+    }
 
-    // IEnumerator: kiểu trả về bắt buộc cho Coroutine
-    // Coroutine có thể "tạm dừng" ở yield return và tiếp tục sau đó
+    /// <summary>
+    /// Kích hoạt hiệu ứng làm chậm từ chướng ngại vật.
+    /// </summary>
+    public void ApplyObstacleSlow(float slowMultiplier = 0.5f, float duration = 2f)
+    {
+        if (AudioManager.Instance != null && !_isSlowed) AudioManager.Instance.PlayItemBug();
+        if (_isSlowed) return;
+        StartCoroutine(SlowCoroutine(slowMultiplier, duration));
+    }
+
+    /// <summary>
+    /// Áp dụng điểm thưởng tốc độ cuối trận.
+    /// </summary>
+    public void ApplyEndgameSpeedBonus()
+    {
+        float mult = GameManager.Instance.GetEndgameSpeedMultiplier();
+        if (mult > 1f)
+        {
+            speed *= mult;
+        }
+    }
+
     private IEnumerator BoostCoroutine(float multiplier, float duration)
     {
-        // Đặt speedMultiplier = multiplier ngay lập tức (tăng tốc từ frame này)
-        speedMultiplier = multiplier;
-
-        // Tạm dừng coroutine 'duration' giây, trong thời gian đó game vẫn chạy bình thường
+        _speedMultiplier = multiplier;
         yield return new WaitForSeconds(duration);
-
-        // Sau 'duration' giây, khôi phục về bình thường
-        speedMultiplier = 1f;
-
-        // Xóa reference vì coroutine đã kết thúc
-        activeBoostCoroutine = null;
+        _speedMultiplier = 1f;
+        _activeBoostCoroutine = null;
     }
 
     private IEnumerator SlowCoroutine(float slowMultiplier, float duration)
     {
-        // Đánh dấu đang bị slow (để ApplyObstacleSlow không apply thêm)
-        isSlowed = true;
+        _isSlowed = true;
+        _speedMultiplier = slowMultiplier;
 
-        // Áp dụng giảm tốc (vd: 0.5 = còn 50% tốc độ)
-        speedMultiplier = slowMultiplier;
+        if (_animator != null)
+            _animator.SetBool(Constants.ANIM_IS_SLOWED, true);
 
-        // Báo Animator chuyển sang animation Walk (IsSlowed = true → Run → Walk)
-        if (animator != null)
-            animator.SetBool("IsSlowed", true);
-
-        // Chuyển Đĩa Mài Giảm Tốc (Đi Nhón Chân / Walk)
         if (sfxSource != null && walkingStepClip != null)
         {
             sfxSource.clip = walkingStepClip;
             sfxSource.Play();
         }
 
-        // Chờ hết thời gian slow
         yield return new WaitForSeconds(duration);
 
-        // Phục hồi tốc độ bình thường
-        speedMultiplier = 1f;
+        _speedMultiplier = 1f;
+        _isSlowed = false;
 
-        // Bỏ cờ slow
-        isSlowed = false;
+        if (_animator != null)
+            _animator.SetBool(Constants.ANIM_IS_SLOWED, false);
 
-        // Báo Animator chuyển lại Run (IsSlowed = false → Walk → Run)
-        if (animator != null)
-            animator.SetBool("IsSlowed", false);
-
-        // Thay lại Đĩa Nhạc Bay Khẩn Cấp (Running)
         if (sfxSource != null && runningStepClip != null)
         {
             sfxSource.clip = runningStepClip;

@@ -6044,10 +6044,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb5eab6257e273640a864e634306093c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  baseSpeed: 10
-  speedIncreaseRate: 0.5
+  baseSpeed: 9.5
+  speedIncreaseRate: 0.25
   maxSpeed: 20
-  player: {fileID: 1986092846}
+  player: {fileID: 564629848}
   animator: {fileID: 360983313}
   bossFootstepSource: {fileID: 360983315}
   bossFootstepClip: {fileID: 8300000, guid: 67d1d4b3a81414e4dab6aad112e46fc1, type: 3}
@@ -7990,6 +7990,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   scoreText: {fileID: 520741963}
+  highScoreText: {fileID: 0}
   popupPanel: {fileID: 1135354568}
   popupText: {fileID: 170935235}
   popupDuration: 1.5

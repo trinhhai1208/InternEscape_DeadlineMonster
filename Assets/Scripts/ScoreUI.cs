@@ -3,31 +3,43 @@ using UnityEngine;
 using TMPro;
 
 /// <summary>
-/// ScoreUI: Quản lý toàn bộ UI trong game.
-/// - Hiện điểm (chỉ CodeCommit cộng +10)
-/// - Hiện Popup thông báo 1.5 giây khi chạm vào Coffee, SkinUp, Bug
+/// Quản lý toàn bộ giao diện người dùng (UI) trong quá trình chơi:
+/// - Hiển thị điểm số hiện tại và kỷ lục (Best Score).
+/// - Hiển thị các thông báo Popup tạm thời (Coffee, SkinUp, Bug).
 /// </summary>
 public class ScoreUI : MonoBehaviour
 {
-    // Singleton để các script khác dễ dàng truy cập (vd: ScoreUI.Instance.ShowPopup(...))
+    /// <summary>
+    /// Bản thực thi duy nhất của ScoreUI.
+    /// </summary>
     public static ScoreUI Instance { get; private set; }
 
-    [Header("── Score UI ──────────────────────")]
-    // Kéo Text chứa điểm (TextMeshPro) vào đây
+    [Header("Score UI")]
+    [Tooltip("Text hiển thị điểm số hiện tại")]
     public TMP_Text scoreText;
 
-    [Header("── Popup UI ──────────────────────")]
-    // Kéo Panel/Background của popup vào đây (để bật/tắt)
+    [Tooltip("Text hiển thị điểm kỷ lục (Tùy chọn)")]
+    public TMP_Text highScoreText;
+
+    [Header("Popup UI")]
+    [Tooltip("Panel nền của các thông báo Popup")]
     public GameObject popupPanel;
 
-    // Kéo Text nằm TRONG popup vào đây (để đổi nội dung chữ)
+    [Tooltip("Text nằm trong Popup")]
     public TMP_Text popupText;
 
-    // Thời gian hiển thị popup (mặc định 1.5 giây)
+    [Tooltip("Thời gian tồn tại của thông báo Popup")]
     public float popupDuration = 1.5f;
 
-    // Biến lưu Coroutine hiện tại để có thể tắt ngay lập tức nếu player ăn liên tiếp 2 item
+    // ═══════════════════════════════════════════════════════════
+    //  PRIVATE FIELDS
+    // ═══════════════════════════════════════════════════════════
+
     private Coroutine _activePopup;
+
+    // ═══════════════════════════════════════════════════════════
+    //  UNITY LIFECYCLE
+    // ═══════════════════════════════════════════════════════════
 
     private void Awake()
     {
@@ -41,17 +53,18 @@ public class ScoreUI : MonoBehaviour
 
     private void Start()
     {
-        // Ẩn popup ngay khi mới vào game
         if (popupPanel != null) popupPanel.SetActive(false);
-
-        // Hiển thị điểm ban đầu là 0
+        
         UpdateScore(0);
+        UpdateHighScore();
     }
 
-    // ─── Score ──────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+    //  SCORE DISPLAY
+    // ═══════════════════════════════════════════════════════════
 
     /// <summary>
-    /// GameManager sẽ gọi hàm này để cập nhật số điểm trên màn hình
+    /// Cập nhật điểm số hiện tại lên màn hình.
     /// </summary>
     public void UpdateScore(int score)
     {
@@ -59,38 +72,46 @@ public class ScoreUI : MonoBehaviour
             scoreText.text = "Code Commit: " + score;
     }
 
-    // ─── Popup ──────────────────────────────────────────────
+    /// <summary>
+    /// Cập nhật điểm kỷ lục từ PlayerPrefs lên màn hình.
+    /// </summary>
+    private void UpdateHighScore()
+    {
+        if (highScoreText != null)
+        {
+            int best = PlayerPrefs.GetInt(Constants.GetHighScoreKey(), 0);
+            highScoreText.text = "Best: " + best;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  POPUP NOTIFICATIONS
+    // ═══════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Hàm gọi từ Item/Obstacle để hiện nội dung lên giữa màn hình
-    /// Truyền thêm màu để đổi màu chữ cho từng loại item
+    /// Hiển thị thông báo ngắn gọn giữa màn hình với màu sắc tương ứng.
     /// </summary>
     public void ShowPopup(string message, Color textColor)
     {
-        // 1. Dừng popup trước đó (nếu có) để tránh lỗi đè lấn lộn
+        // Dừng popup cũ nếu đang hiển thị
         if (_activePopup != null) StopCoroutine(_activePopup);
-
-        // 2. Chạy popup mới
         _activePopup = StartCoroutine(PopupRoutine(message, textColor));
     }
 
     private IEnumerator PopupRoutine(string message, Color textColor)
     {
-        // Gán chữ và đổi màu Text
         if (popupText != null) 
         {
             popupText.text = message;
             popupText.color = textColor;
         }
 
-        // Bật panel lên cho người chơi thấy
         if (popupPanel != null) popupPanel.SetActive(true);
 
-        // Đợi 1 thời gian đúng bằng popupDuration (1.5 giây)
         yield return new WaitForSeconds(popupDuration);
 
-        // Tắt panel đi
         if (popupPanel != null) popupPanel.SetActive(false);
         _activePopup = null;
     }
 }
+

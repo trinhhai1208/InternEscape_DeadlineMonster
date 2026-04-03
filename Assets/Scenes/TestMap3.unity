@@ -20126,7 +20126,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bbf762fa50846434aafa0700e37cdf72, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  speed: 10
+  speed: 15
   laneSwitchSpeed: 15
   lanes:
   - -5
@@ -21999,6 +21999,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   scoreText: {fileID: 520741963}
+  highScoreText: {fileID: 0}
   popupPanel: {fileID: 1135354568}
   popupText: {fileID: 170935235}
   popupDuration: 1.5

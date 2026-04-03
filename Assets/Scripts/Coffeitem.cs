@@ -1,95 +1,93 @@
-using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// CoffeeItem: Player nhặt cà phê → tốc độ tăng tạm thời trong vài giây.
-/// Không tăng vĩnh viễn như SkinUp — chỉ tăng trong 'duration' giây rồi về lại bình thường.
+/// Vật phẩm Cà phê (Boost): Giúp người chơi tăng tốc độ di chuyển tạm thời.
+/// Hiệu ứng sẽ biến mất sau một khoảng thời gian quy định.
 /// </summary>
-[RequireComponent(typeof(Collider))] // Bắt buộc phải có Collider trên GameObject này
+[RequireComponent(typeof(Collider))]
 public class CoffeeItem : MonoBehaviour
 {
-    // ─── Cài đặt ────────────────────────────────────────────────
-    [Header("Settings")]
+    // ═══════════════════════════════════════════════════════════
+    //  FIELDS — Inspector
+    // ═══════════════════════════════════════════════════════════
 
-    // Hệ số nhân tốc độ khi uống cà phê. 1.5 = tăng 50% tốc độ trong 'duration' giây.
+    [Header("Settings")]
+    [Tooltip("Hệ số nhân tốc độ (ví dụ 1.5 = tăng 50%)")]
     public float speedMultiplier = 1.5f;
 
-    // Thời gian (giây) hiệu ứng tốc độ kéo dài trước khi về lại bình thường.
+    [Tooltip("Thời gian hiệu ứng kéo dài (giây)")]
     public float duration = 1.5f;
 
-    // ─── Hiệu ứng hình ảnh ──────────────────────────────────────
     [Header("VFX")]
-
-    // Prefab particle phát ra khi nhặt (vd: hiệu ứng cà phê sủi bọt).
+    [Tooltip("Hiệu ứng hạt khi nhặt cà phê")]
     public GameObject collectParticlePrefab;
 
-    // Thời gian particle tồn tại trước khi tự xóa.
+    [Tooltip("Thời gian tồn tại của hiệu ứng hạt")]
     public float particleLifetime = 1f;
 
-    // ─── Âm thanh ───────────────────────────────────────────────
-    [Header("Audio")]
+    // ═══════════════════════════════════════════════════════════
+    //  PRIVATE FIELDS
+    // ═══════════════════════════════════════════════════════════
 
-    // Âm thanh phát ra khi nhặt cà phê.
-    public AudioClip collectSound;
+    private bool _isCollected = false;
+    private Collider _collider;
 
-    // ─── Biến nội bộ ────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════
+    //  UNITY LIFECYCLE
+    // ═══════════════════════════════════════════════════════════
 
-    // Cờ chống trigger 2 lần trong cùng 1 frame.
-    private bool _collected = false;
-
-    // ─── Unity Lifecycle ─────────────────────────────────────────
-
-    // Chạy khi GameObject được kích hoạt lần đầu
-    private void Start()
+    private void Awake()
     {
-        // Đảm bảo collider là trigger (phát hiện va chạm, không chặn physics)
-        GetComponent<Collider>().isTrigger = true;
+        _collider = GetComponent<Collider>();
+        _collider.isTrigger = true;
     }
 
-    // Unity gọi hàm này khi một Collider khác chạy vào vùng trigger của item này
+    /// <summary>
+    /// Reset trạng thái khi Item được tái sử dụng từ Pool.
+    /// </summary>
+    private void OnEnable()
+    {
+        _isCollected = false;
+    }
+
     private void OnTriggerEnter(Collider other)
     {
-        // Nếu đã nhặt rồi → bỏ qua (tránh double trigger)
-        if (_collected) return;
+        if (_isCollected) return;
+        if (!other.CompareTag(Constants.TAG_PLAYER)) return;
 
-        // Chỉ phản ứng với tag "Player", bỏ qua Bot và các object khác
-        if (!other.CompareTag("Player")) return;
+        _isCollected = true;
+        HandleCollection(other);
+    }
 
-        // Đánh dấu đã collect
-        _collected = true;
+    // ═══════════════════════════════════════════════════════════
+    //  COLLECT LOGIC
+    // ═══════════════════════════════════════════════════════════
 
-        // Lấy component PlayerController từ object Player vừa chạm vào.
-        // GetComponent<T>(): tìm component kiểu T trên cùng GameObject với 'other'.
-        PlayerController pc = other.GetComponent<PlayerController>();
-
-        // Gọi hàm tăng tốc nếu tìm thấy PlayerController (tránh null error)
+    private void HandleCollection(Collider playerCollider)
+    {
+        PlayerController pc = playerCollider.GetComponent<PlayerController>();
         if (pc != null)
         {
-            // Truyền hệ số nhân và thời gian vào PlayerController để xử lý coroutine
+            // PlayerController sẽ tự phát âm thanh cà phê trong hàm ApplySpeedBoost
             pc.ApplySpeedBoost(speedMultiplier, duration);
             
-            // ── Hiện popup thông báo ──────────────────────────────
-            // Sử dụng mã màu RBG cho màu Nâu (vd: R=0.6, G=0.3, B=0)
-            Color brownColor = new Color(0.6f, 0.3f, 0f);
-            ScoreUI.Instance?.ShowPopup($"Speed x {speedMultiplier}!", brownColor);
+            // Hiển thị Popup thông báo
+            Color coffeeBrown = new Color(0.6f, 0.3f, 0f);
+            ScoreUI.Instance?.ShowPopup($"Speed x {speedMultiplier}!", coffeeBrown);
         }
 
-        // Tạo particle hiệu ứng tại vị trí item
+        SpawnVFX();
+
+        // Thu hồi về Pool
+        ItemManager.Instance?.ReturnToPool(gameObject);
+    }
+
+    private void SpawnVFX()
+    {
         if (collectParticlePrefab != null)
         {
-            // Instantiate = tạo bản sao prefab. Quaternion.identity = không xoay (thẳng đứng)
             GameObject fx = Instantiate(collectParticlePrefab, transform.position, Quaternion.identity);
-
-            // Đặt hẹn giờ xóa particle sau 'particleLifetime' giây
             Destroy(fx, particleLifetime);
         }
-
-        // Phát âm thanh 3D tại vị trí item (tự tạo AudioSource rồi tự xóa)
-        if (collectSound != null)
-            AudioSource.PlayClipAtPoint(collectSound, transform.position);
-
-        // Trả item về ObjectPool để tái sử dụng (không Destroy thật = tiết kiệm CPU)
-        ItemManager.Instance?.ReturnToPool(gameObject);
     }
 }

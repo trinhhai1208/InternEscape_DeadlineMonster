@@ -1,18 +1,25 @@
 using UnityEngine;
 
 /// <summary>
-/// Quản lý âm thanh tổng (BGM).
-/// Cấu trúc Singleton bất tử xuyên suốt các màn chơi nhờ lệnh DontDestroyOnLoad.
+/// Quản lý hệ thống âm thanh toàn cục: nhạc nền (BGM) và hiệu ứng (SFX).
+/// Sử dụng Singleton và DontDestroyOnLoad để duy trì âm thanh xuyên suốt các màn chơi.
 /// </summary>
 public class AudioManager : MonoBehaviour
 {
+    /// <summary>
+    /// Bản thực thi duy nhất của AudioManager.
+    /// </summary>
     public static AudioManager Instance { get; private set; }
 
-    [Header("Nhạc Nền")]
+    // ═══════════════════════════════════════════════════════════
+    //  FIELDS — Inspector
+    // ═══════════════════════════════════════════════════════════
+
+    [Header("Nhạc Nền (BGM)")]
     public AudioClip menuSound;
     public AudioClip soundInGame;
 
-    [Header("Hiệu Ứng Vặt (Lượm đồ / Thắng / Thua)")]
+    [Header("Hiệu Ứng (SFX)")]
     public AudioClip codeCommitSound;
     public AudioClip coffeeSound;
     public AudioClip bugSound;
@@ -20,13 +27,19 @@ public class AudioManager : MonoBehaviour
     public AudioClip winGameSound;
     public AudioClip gameOverSound;
 
-    // Máy phát nhạc chuyên biệt cho BGM và Cục chớp âm cho SFX
-    private AudioSource bgmSource;
-    private AudioSource sfxSource;
+    // ═══════════════════════════════════════════════════════════
+    //  PRIVATE FIELDS
+    // ═══════════════════════════════════════════════════════════
+
+    private AudioSource _bgmSource;
+    private AudioSource _sfxSource;
+
+    // ═══════════════════════════════════════════════════════════
+    //  UNITY LIFECYCLE
+    // ═══════════════════════════════════════════════════════════
 
     private void Awake()
     {
-        // Nếu đã có quản lý âm thanh từ Scene trước chuyển sang, thì tiêu diệt bản sao mới này đi.
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -34,61 +47,94 @@ public class AudioManager : MonoBehaviour
         }
 
         Instance = this;
-        // Biến vật thể này thành thần thánh: KHÔNG bao giờ bị tiêu huỷ khi dùng LoadScene()
         DontDestroyOnLoad(gameObject);
 
-        // Lắp ráp màng Loa ảo
-        bgmSource = gameObject.AddComponent<AudioSource>();
-        bgmSource.loop = true; // Nhạc nền luôn luôn Loop lặp lại
-        bgmSource.playOnAwake = false;
-        bgmSource.volume = 0.5f; // Chỉnh âm lượng mặc định
+        // Khởi tạo Loa Nhạc Nền
+        _bgmSource = gameObject.AddComponent<AudioSource>();
+        _bgmSource.loop = true;
+        _bgmSource.playOnAwake = false;
+        _bgmSource.volume = 0.5f;
 
-        // Sinh ra chiếc loa đài phụ chuyên phát tiếng bíp bíp / bùm bùm
-        sfxSource = gameObject.AddComponent<AudioSource>();
+        // Khởi tạo Loa Hiệu Ứng
+        _sfxSource = gameObject.AddComponent<AudioSource>();
     }
 
-    // ─── BỘ API ÉP PHÁT TIẾNG ĐỘNG (Dùng PlayOneShot để có thể đè nhiều tiếng cùng lúc) ───
-    public void PlayItemCodeCommit() { if(codeCommitSound) sfxSource.PlayOneShot(codeCommitSound); }
-    public void PlayItemCoffee() { if(coffeeSound) sfxSource.PlayOneShot(coffeeSound); }
-    public void PlayItemBug() { if(bugSound) sfxSource.PlayOneShot(bugSound); }
-    public void PlayItemSkinUp() { if(levelUpSound) sfxSource.PlayOneShot(levelUpSound); }
-    public void PlayWin() { if(winGameSound) sfxSource.PlayOneShot(winGameSound); }
-    public void PlayLose() { if(gameOverSound) sfxSource.PlayOneShot(gameOverSound); }
+    // ═══════════════════════════════════════════════════════════
+    //  SFX PLAYER METHODS
+    // ═══════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Phát nhạc ngoài Sảnh (Tự động thông minh không hát lại từ đầu nếu đang hát dở bài Menu)
+    /// Phát tiếng khi nhặt được Code Commit.
+    /// </summary>
+    public void PlayItemCodeCommit() { PlaySFX(codeCommitSound); }
+
+    /// <summary>
+    /// Phát tiếng khi uống Cà phê (Boost).
+    /// </summary>
+    public void PlayItemCoffee() { PlaySFX(coffeeSound); }
+
+    /// <summary>
+    /// Phát tiếng khi va chạm với Bug (Slow).
+    /// </summary>
+    public void PlayItemBug() { PlaySFX(bugSound); }
+
+    /// <summary>
+    /// Phát tiếng khi nâng cấp trình độ (Skin Up).
+    /// </summary>
+    public void PlayItemSkinUp() { PlaySFX(levelUpSound); }
+
+    /// <summary>
+    /// Phát tiếng khi chiến thắng màn chơi.
+    /// </summary>
+    public void PlayWin() { PlaySFX(winGameSound); }
+
+    /// <summary>
+    /// Phát tiếng khi bị Deadline bắt kịp (Lose).
+    /// </summary>
+    public void PlayLose() { PlaySFX(gameOverSound); }
+
+    private void PlaySFX(AudioClip clip)
+    {
+        if (clip != null && _sfxSource != null)
+        {
+            _sfxSource.PlayOneShot(clip);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  BGM CONTROL METHODS
+    // ═══════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Phát nhạc nền ngoài Menu chính.
     /// </summary>
     public void PlayMenuMusic()
     {
-        if (menuSound == null) return;
-        
-        // Tránh giật đĩa nết hát bài trùng bài
-        if (bgmSource.clip == menuSound && bgmSource.isPlaying) return;
+        if (menuSound == null || _bgmSource == null) return;
+        if (_bgmSource.clip == menuSound && _bgmSource.isPlaying) return;
 
-        bgmSource.clip = menuSound;
-        bgmSource.Play();
-        Debug.Log("Đang phát nhạc: MenuSound");
+        _bgmSource.clip = menuSound;
+        _bgmSource.Play();
     }
 
     /// <summary>
-    /// Phát nhạc Nhịp Độ Cao (Gameplay)
+    /// Phát nhạc nền căng thẳng trong màn chơi.
     /// </summary>
     public void PlayInGameMusic()
     {
-        if (soundInGame == null) return;
+        if (soundInGame == null || _bgmSource == null) return;
+        if (_bgmSource.clip == soundInGame && _bgmSource.isPlaying) return;
 
-        if (bgmSource.clip == soundInGame && bgmSource.isPlaying) return;
-
-        bgmSource.clip = soundInGame;
-        bgmSource.Play();
-        Debug.Log("Đang phát nhạc: SoundInGame");
+        _bgmSource.clip = soundInGame;
+        _bgmSource.Play();
     }
 
     /// <summary>
-    /// Tắt ngúm toàn hệ thống Nhạc Nền (VD: Khi ấn nghỉ game)
+    /// Dừng toàn bộ nhạc nền đang phát.
     /// </summary>
     public void StopMusic()
     {
-        bgmSource.Stop();
+        if (_bgmSource != null) _bgmSource.Stop();
     }
 }
+

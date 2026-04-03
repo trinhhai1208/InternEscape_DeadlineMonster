@@ -17,13 +17,13 @@ public class BotController : MonoBehaviour
 
     // Tốc độ ban đầu của Bot khi game bắt đầu (units/giây).
     // Nên thấp hơn Player.speed một chút để Player có lợi thế ban đầu.
-    public float baseSpeed = 10f;
+    public float baseSpeed = 9.5f;
 
     // Lượng tốc độ tăng thêm mỗi giây (acceleration). Bot càng lúc càng nhanh.
-    public float speedIncreaseRate = 0.15f;
+    public float speedIncreaseRate = 0.25f;
 
     // Giới hạn tốc độ tối đa của Bot. Đảm bảo Bot không vượt quá ngưỡng này.
-    public float maxSpeed = 15f;
+    public float maxSpeed = 20f;
 
     [Header("References")]
 
